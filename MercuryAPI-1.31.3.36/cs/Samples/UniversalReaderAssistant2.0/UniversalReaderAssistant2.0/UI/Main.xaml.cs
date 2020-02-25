@@ -141,6 +141,7 @@ namespace ThingMagic.URA2
         /// Define a reader variable
         /// </summary>
         Reader objReader = null;
+        int IsTrigger = 0;
 
         /// <summary>
         /// Define a region variable
@@ -2665,6 +2666,7 @@ namespace ThingMagic.URA2
                         // Disable  read-once, readasyncread buttons                    
                         btnRead.IsEnabled = false;
                         btnRead.Visibility = System.Windows.Visibility.Hidden;
+                        trigger_stackpanel.Visibility = Visibility.Hidden;
                         btnRefreshReadersList.IsEnabled = true;
                         // Register bonjour subscribed events
                         if (null != eventManager)
@@ -3060,6 +3062,7 @@ namespace ThingMagic.URA2
                     btnWebUI.Visibility = System.Windows.Visibility.Visible;
 
                 btnRead.Visibility = System.Windows.Visibility.Visible;
+                trigger_stackpanel.Visibility = System.Windows.Visibility.Visible;
 
                 //READER URI drop down should be disabled after URA is connected to a reader
                 cmbReaderAddr.IsEnabled = false;
@@ -3232,6 +3235,7 @@ namespace ThingMagic.URA2
                 Mouse.SetCursor(Cursors.Arrow);
                 btnConnect.IsEnabled = true;
                 btnRead.Visibility = Visibility.Hidden;
+                trigger_stackpanel.Visibility = Visibility.Hidden;
                 initialReaderSettingsLoaded = true;
                 lblshowStatus.Content = "Disconnected";
                 rdbtnLocalConnection.IsEnabled = rdbtnNetworkConnection.IsEnabled = rdbtnCustomTrasnportConnection.IsEnabled = true;
@@ -4345,6 +4349,7 @@ namespace ThingMagic.URA2
                     {
                         plan = new MultiReadPlan(simpleReadPlans);
                     }
+
                     objReader.ParamSet("/reader/read/plan", plan);
                 }
                 simpleReadPlans.Clear();
@@ -4427,12 +4432,24 @@ namespace ThingMagic.URA2
                     foreach (int a in ant)
                     {
                         srp = new SimpleReadPlan(new int[] { a }, protocol, searchSelect, embTagOp, isFastSearchEnabled, 100);
+                        if ((bool)is_trigger_checkbox.IsChecked)
+                        {
+                            GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+                            gpiPinTrigger.enable = true;
+                            srp.ReadTrigger = gpiPinTrigger;
+                        }
                         simpleReadPlans.Add(srp);
                     }
                 }
                 else
                 {
                     SimpleReadPlan srp = new SimpleReadPlan(ant.ToArray(), protocol, searchSelect, embTagOp, isFastSearchEnabled);
+                    if ((bool)is_trigger_checkbox.IsChecked)
+                    {
+                        GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+                        gpiPinTrigger.enable = true;
+                        srp.ReadTrigger = gpiPinTrigger;
+                    }
                     simpleReadPlans.Add(srp);
                 }
             }
@@ -5182,6 +5199,10 @@ namespace ThingMagic.URA2
         private void startRead_Click(object sender, RoutedEventArgs e)
         {
             OnStartRead("");
+            //if (btnRead.Content.ToString() == "Read")
+            //{
+            //    btnConnect_Click(sender, e);
+            //}
         }
 
         /// <summary>
@@ -5324,6 +5345,7 @@ namespace ThingMagic.URA2
                     Mouse.SetCursor(Cursors.Arrow);
                     // Call start async read
                     objReader.StartReading();
+                    Console.WriteLine("startReading ...");
 
                     // Clear previous messages on status bar
                     ClearMessageOnStatusBar();
@@ -5938,6 +5960,26 @@ namespace ThingMagic.URA2
             {
                 broadcastON();
             }
+
+            int currentGPI = Convert.ToInt32(trigger_gpi_combobox.Text.ToString());
+            
+            if ((bool)is_trigger_checkbox.IsChecked && IsTrigger != currentGPI)
+            {
+                int[] inputList = (int[])(objReader.ParamGet("/reader/gpio/inputList"));
+                if (!inputList.Contains(currentGPI))
+                {
+                    int[] input = new int[] { currentGPI };
+                    objReader.ParamSet("/reader/gpio/inputList", input);
+                    Console.WriteLine("Input list set.");
+                }
+
+                Console.WriteLine("set gpi {0} as trigger", currentGPI);
+                int[] gpiPin = new int[1];
+                gpiPin[0] = currentGPI;
+                objReader.ParamSet("/reader/read/trigger/gpi", gpiPin);
+                IsTrigger = currentGPI;
+            }
+
             if ((bool)rdBtnReadOnce.IsChecked)
             {
                 //call read once
@@ -15715,6 +15757,16 @@ namespace ThingMagic.URA2
         private void txtbxHopTable_Cnot_TextChanged(object sender, TextChangedEventArgs e)
         {
             HoptableCheck = true;
+        }
+
+        private void is_trigger_checkbox_Checked(object sender, RoutedEventArgs e)
+        {
+            trigger_gpi_combobox.Visibility = Visibility.Visible;
+        }
+
+        private void is_trigger_checkbox_Unchecked(object sender, RoutedEventArgs e)
+        {
+            trigger_gpi_combobox.Visibility = Visibility.Collapsed;
         }
     }
 }
