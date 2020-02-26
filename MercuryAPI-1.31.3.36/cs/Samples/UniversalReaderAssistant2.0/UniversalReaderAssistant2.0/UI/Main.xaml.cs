@@ -141,7 +141,6 @@ namespace ThingMagic.URA2
         /// Define a reader variable
         /// </summary>
         Reader objReader = null;
-        int IsTrigger = 0;
 
         /// <summary>
         /// Define a region variable
@@ -5458,6 +5457,20 @@ namespace ThingMagic.URA2
                 if (null != objReader)
                 {
                     objReader.StopReading();
+                    Console.WriteLine("StopReading ...");
+
+                    if ((bool)is_trigger_checkbox.IsChecked)
+                    {
+                        List<int> ant = GetSelectedAntennaList();
+                        bool isFastSearchEnabled = (bool)chkEnableFastSearch.IsChecked;
+                        SimpleReadPlan srp = new SimpleReadPlan(ant.ToArray(), TagProtocol.GEN2, null, null, isFastSearchEnabled);
+                        GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+                        gpiPinTrigger.enable = false;
+                        srp.ReadTrigger = gpiPinTrigger;
+                        Console.WriteLine("Start Reset Readplan ...");
+                        objReader.ParamSet("/reader/read/plan", srp);
+                        Console.WriteLine("Reset Readplan success");
+                    }
                 }
                 // Causes a control bound to the BindingSource to reread all
                 // the items in the list and refresh their displayed values.
@@ -5955,29 +5968,37 @@ namespace ThingMagic.URA2
                     MessageBox.Show(ex.Message, "Error");
                     return;
                 }
+
+                try
+                {
+                    int currentGPI = Convert.ToInt32(trigger_gpi_combobox.Text.ToString());
+
+                    if ((bool)is_trigger_checkbox.IsChecked)
+                    {
+                        int[] inputList = (int[])(objReader.ParamGet("/reader/gpio/inputList"));
+                        if (!inputList.Contains(currentGPI))
+                        {
+                            int[] input = new int[] { currentGPI };
+                            objReader.ParamSet("/reader/gpio/inputList", input);
+                            Console.WriteLine("Input list set.");
+                        }
+
+                        Console.WriteLine("set gpi {0} as trigger", currentGPI);
+                        int[] gpiPin = new int[1];
+                        gpiPin[0] = currentGPI;
+                        objReader.ParamSet("/reader/read/trigger/gpi", gpiPin);
+                        Console.WriteLine("set.trigger gpi success");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Set Trigger Error");
+                    return;
+                }
             }
             if (clientConnected || isHttpPostServiceEnabled)
             {
                 broadcastON();
-            }
-
-            int currentGPI = Convert.ToInt32(trigger_gpi_combobox.Text.ToString());
-            
-            if ((bool)is_trigger_checkbox.IsChecked && IsTrigger != currentGPI)
-            {
-                int[] inputList = (int[])(objReader.ParamGet("/reader/gpio/inputList"));
-                if (!inputList.Contains(currentGPI))
-                {
-                    int[] input = new int[] { currentGPI };
-                    objReader.ParamSet("/reader/gpio/inputList", input);
-                    Console.WriteLine("Input list set.");
-                }
-
-                Console.WriteLine("set gpi {0} as trigger", currentGPI);
-                int[] gpiPin = new int[1];
-                gpiPin[0] = currentGPI;
-                objReader.ParamSet("/reader/read/trigger/gpi", gpiPin);
-                IsTrigger = currentGPI;
             }
 
             if ((bool)rdBtnReadOnce.IsChecked)
