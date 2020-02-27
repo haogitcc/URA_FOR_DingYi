@@ -2488,6 +2488,11 @@ namespace ThingMagic.URA2
         /// <param name="e"></param>
         private void btnConnect_Click(object sender, RoutedEventArgs e)
         {
+            if(IsAutoReadStarted == true)
+            {
+                IsAutoReadStarted = false;
+            }
+
             try
             {
                 if (btnConnect.Content.ToString() == "Connect")
@@ -4427,12 +4432,22 @@ namespace ThingMagic.URA2
                     foreach (int a in ant)
                     {
                         srp = new SimpleReadPlan(new int[] { a }, protocol, searchSelect, embTagOp, isFastSearchEnabled, 100);
+                        GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+                        gpiPinTrigger.enable = true;
+                        //To disable autonomous read make enableAutonomousRead flag to false and do SAVEWITHRREADPLAN
+                        srp.enableAutonomousRead = true;
+                        srp.ReadTrigger = gpiPinTrigger;
                         simpleReadPlans.Add(srp);
                     }
                 }
                 else
                 {
                     SimpleReadPlan srp = new SimpleReadPlan(ant.ToArray(), protocol, searchSelect, embTagOp, isFastSearchEnabled);
+                    GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+                    gpiPinTrigger.enable = true;
+                    //To disable autonomous read make enableAutonomousRead flag to false and do SAVEWITHRREADPLAN
+                    srp.enableAutonomousRead = true;
+                    srp.ReadTrigger = gpiPinTrigger;
                     simpleReadPlans.Add(srp);
                 }
             }
@@ -6569,6 +6584,8 @@ namespace ThingMagic.URA2
                 txtTagsNum.Text = value.ToString();
             }
         }
+
+        public bool IsAutoReadStarted = false;
 
         private void cmdUp_Click(object sender, RoutedEventArgs e)
         {
@@ -15715,6 +15732,603 @@ namespace ThingMagic.URA2
         private void txtbxHopTable_Cnot_TextChanged(object sender, TextChangedEventArgs e)
         {
             HoptableCheck = true;
+        }
+
+        private void is_trigger_checkbox_Checked(object sender, RoutedEventArgs e)
+        {
+            trigger_gpi_combobox.Visibility = Visibility.Visible;
+            btnAutonomous.Visibility = Visibility.Visible;
+        }
+
+        private void is_trigger_checkbox_Unchecked(object sender, RoutedEventArgs e)
+        {
+            trigger_gpi_combobox.Visibility = Visibility.Collapsed;
+            btnAutonomous.Visibility = Visibility.Collapsed;
+        }
+
+        private void btnAutonomous_Click(object sender, RoutedEventArgs e)
+        {
+            if(btnAutonomous.Content.ToString() == "Autonomous")
+            {
+                btnAutonomous.Content = "AutoReading";
+                if(IsAutoReadStarted==true)
+                {
+                    objReader.TagRead += PrintTagRead;
+                    objReader.ReadException += ReadException;
+                    Console.WriteLine("Add TagRead");
+                }
+                else
+                {
+                    ResetReadPlan();
+                    StartAutoRead(sender, e);
+                    IsAutoReadStarted = true;
+                }
+                
+            }
+            else if (btnAutonomous.Content.ToString() == "AutoReading")
+            {
+                btnAutonomous.Content = "Autonomous";
+                // De register read exception and tag read and temperature listeners
+                objReader.TagRead -= PrintTagRead;
+                objReader.ReadException -= ReadException;
+                Console.WriteLine("Remove TagRead");
+            }
+        }
+
+        private void ResetReadPlan()
+        {
+            List<int> ant = GetSelectedAntennaList();
+
+            //GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+            //gpiPinTrigger.enable = false;
+            SimpleReadPlan srp = new SimpleReadPlan(ant, TagProtocol.GEN2, null, null, 1000);
+
+            //To disable autonomous read make enableAutonomousRead flag to false and do SAVEWITHRREADPLAN
+            srp.enableAutonomousRead = false;
+            //srp.ReadTrigger = gpiPinTrigger;
+
+            objReader.ParamSet("/reader/read/plan", srp);
+
+            objReader.ParamSet("/reader/userConfig", new SerialReader.UserConfigOp(SerialReader.UserConfigOperation.SAVEWITHREADPLAN));
+            Console.WriteLine("ResetReadPlan: User profile set option:save all configuration with read plan");
+
+            objReader.ParamSet("/reader/userConfig", new SerialReader.UserConfigOp(SerialReader.UserConfigOperation.RESTORE));
+            Console.WriteLine("ResetReadPlan: User profile set option:restore all configuration");
+        }
+
+        private void StartAutoRead(object sender, RoutedEventArgs e)
+        {
+            btnAutonomous.ToolTip = "Start Autonomous Read";
+
+            try
+            {
+                int curTriggerGPI = Convert.ToInt32(trigger_gpi_combobox.Text.ToString());
+                int[] gpiPin = new int[1];
+                gpiPin[0] = curTriggerGPI;
+                objReader.ParamSet("/reader/read/trigger/gpi", gpiPin);
+
+                objReader.ParamSet("/reader/read/asyncOffTime", 0);
+
+                // Set ReadPlan
+                try
+                {
+                    List<int> ant = GetSelectedAntennaList();
+                    bool isFastSearchEnabled = (bool)chkEnableFastSearch.IsChecked;
+
+
+                    //Setup embedded tagOp settings if option checked
+                    TagOp embTagOp = null;
+                    Gen2.Bank opMemBank = Gen2.Bank.TID;
+                    if ((bool)chkEmbeddedReadData.IsChecked)
+                    {
+                        //automatically enable the Data column if embedded tagOp is enabled
+                        TagResults.dataColumn.Visibility = System.Windows.Visibility.Visible;
+                        switch (cbxReadDataBank.Text)
+                        {
+                            case "Reserved":
+                                opMemBank = Gen2.Bank.RESERVED;
+                                break;
+                            case "EPC":
+                                opMemBank = Gen2.Bank.EPC;
+                                break;
+                            case "TID":
+                                opMemBank = Gen2.Bank.TID;
+                                break;
+                            case "User":
+                                opMemBank = Gen2.Bank.USER;
+                                break;
+                        };
+
+                        embTagOp = new Gen2.ReadData(opMemBank, Convert.ToUInt32(Utilities.CheckHexOrDecimal(
+                            txtembReadStartAddr.Text)), Convert.ToByte(Utilities.CheckHexOrDecimal(txtembReadLength.Text)));
+                        objReader.ParamSet("/reader/tagreaddata/uniquebydata", (bool)chkUniqueByData.IsChecked);
+                    }
+                    else
+                    {
+                        TagResults.dataColumn.Visibility = System.Windows.Visibility.Collapsed;
+                    }
+                    //END Setup embedded tagOp settings if option checked
+
+                    //Setup Select Filter settings if option checked
+                    Gen2.Select searchSelect = null;
+                    Gen2.Select searchSelect2 = null;
+                    Gen2.Select searchSelect3 = null;
+                    MultiFilter multifilter = null;
+
+                    Gen2.Bank selectMemBank = Gen2.Bank.EPC;
+                    Gen2.Bank selectMemBank2 = Gen2.Bank.EPC;
+                    Gen2.Bank selectMemBank3 = Gen2.Bank.EPC;
+
+                    if ((bool)chkApplyFilter1.IsChecked)
+                    {
+
+                        switch (MultiFilters1.cbxFilterMemBank.Text)
+                        {
+                            case "EPC":
+                                selectMemBank = Gen2.Bank.EPC;
+                                break;
+                            case "TID":
+                                selectMemBank = Gen2.Bank.TID;
+                                break;
+                            case "User":
+                                selectMemBank = Gen2.Bank.USER;
+                                break;
+                            case "EPC Truncate":
+                                selectMemBank = Gen2.Bank.GEN2EPCTRUNCATE;
+                                break;
+                            case "EPC Length":
+                                selectMemBank = Gen2.Bank.GEN2EPCLENGTHFILTER;
+                                break;
+                        };
+
+                        int discard;
+                        byte[] SearchSelectData = Utilities.GetBytes(
+                            Utilities.RemoveHexstringPrefix(MultiFilters1.txtFilterData.Text), out discard);
+                        // Enter inside if condition, only if filter length is in odd nibbles(hex characters)
+                        if (discard == 1 && SearchSelectData.Length == 0)
+                        {
+                            // If only one hex character(one nibble) is specified as a filter.
+                            // For ex: 0xa, convert into byte array
+                            byte objByte = (byte)(Utilities.HexToByte(
+                                Utilities.RemoveHexstringPrefix(MultiFilters1.txtFilterData.Text).TrimEnd()) << 4);
+                            SearchSelectData = new byte[] { objByte };
+                        }
+                        else if (discard == 1)
+                        {
+                            // If filter length is in odd nibbles. For ex: 0xabc , 0xabcde, 0xabcdefg
+                            // after converting to byte array we get 0xab, 0xc0 if the specified filter is 0xabc
+                            //Adding omitted character to byte array
+                            Array.Resize(ref SearchSelectData, SearchSelectData.Length + 1);
+                            byte objByte = (byte)(((Utilities.HexToByte(
+                                Utilities.RemoveHexstringPrefix(MultiFilters1.txtFilterData.Text).Substring(
+                                Utilities.RemoveHexstringPrefix(
+                                MultiFilters1.txtFilterData.Text).Length - 1).TrimEnd())) << 4));
+                            Array.Copy(new object[] { objByte }, 0, SearchSelectData, SearchSelectData.Length - 1, 1);
+                        }
+
+                        UInt16 dataLength;
+                        if (MultiFilters1.txtFilterData.Text != "")
+                            dataLength = Convert.ToUInt16(Utilities.RemoveHexstringPrefix(MultiFilters1.txtFilterData.Text).Length * 4);//calculate the length in the form of nibbles
+                        else
+                            dataLength = 0;
+
+                        if (MultiFilters1.cbxFilterMemBank.Text == "EPC Length")
+                        {
+                            dataLength = Convert.ToUInt16(Utilities.CheckHexOrDecimal(MultiFilters1.txtFilterEPCLength.Text));
+                            searchSelect = new Gen2.Select(false, Gen2.Bank.GEN2EPCLENGTHFILTER, 16, dataLength, new byte[] { 0x30, 0x00 });
+                        }
+                        else
+                        {
+                            searchSelect = new Gen2.Select((bool)MultiFilters1.chkFilterInvert.IsChecked, selectMemBank, Convert.ToUInt32(Utilities.CheckHexOrDecimal(MultiFilters1.txtFilterStartAddr.Text)), dataLength, SearchSelectData);
+                        }
+                        switch (MultiFilters1.cbxFilterTarget.Text)
+                        {
+                            case "INV S0":
+                                searchSelect.target = Gen2.Select.Target.Inventoried_S0;
+                                break;
+                            case "INV S1":
+                                searchSelect.target = Gen2.Select.Target.Inventoried_S1;
+                                break;
+                            case "INV S2":
+                                searchSelect.target = Gen2.Select.Target.Inventoried_S2;
+                                break;
+                            case "INV S3":
+                                searchSelect.target = Gen2.Select.Target.Inventoried_S3;
+                                break;
+                            case "SELECT":
+                                searchSelect.target = Gen2.Select.Target.Select;
+                                break;
+                        };
+
+                        switch (MultiFilters1.cbxFilterAction.Text)
+                        {
+                            case "0":
+                                searchSelect.action = Gen2.Select.Action.ON_N_OFF;
+                                break;
+                            case "1":
+                                searchSelect.action = Gen2.Select.Action.ON_N_NOP;
+                                break;
+                            case "2":
+                                searchSelect.action = Gen2.Select.Action.NOP_N_OFF;
+                                break;
+                            case "3":
+                                searchSelect.action = Gen2.Select.Action.NEG_N_NOP;
+                                break;
+                            case "4":
+                                searchSelect.action = Gen2.Select.Action.OFF_N_ON;
+                                break;
+                            case "5":
+                                searchSelect.action = Gen2.Select.Action.OFF_N_NOP;
+                                break;
+                            case "6":
+                                searchSelect.action = Gen2.Select.Action.NOP_N_ON;
+                                break;
+                            case "7":
+                                searchSelect.action = Gen2.Select.Action.NOP_N_NEG;
+                                break;
+                        };
+
+                        if ((bool)chkApplyFilter2.IsChecked)
+                        {
+                            switch (MultiFilters2.cbxFilterMemBank.Text)
+                            {
+                                case "EPC":
+                                    selectMemBank2 = Gen2.Bank.EPC;
+                                    break;
+                                case "TID":
+                                    selectMemBank2 = Gen2.Bank.TID;
+                                    break;
+                                case "User":
+                                    selectMemBank2 = Gen2.Bank.USER;
+                                    break;
+                                case "EPC Truncate":
+                                    selectMemBank2 = Gen2.Bank.GEN2EPCTRUNCATE;
+                                    break;
+                                case "EPC Length":
+                                    selectMemBank2 = Gen2.Bank.GEN2EPCLENGTHFILTER;
+                                    break;
+                            };
+
+                            int discard2 = 0;
+                            byte[] SearchSelectData2 = Utilities.GetBytes(
+                                Utilities.RemoveHexstringPrefix(MultiFilters2.txtFilterData.Text), out discard2);
+                            // Enter inside if condition, only if filter length is in odd nibbles(hex characters)
+                            if (discard2 == 1 && SearchSelectData2.Length == 0)
+                            {
+                                // If only one hex character(one nibble) is specified as a filter.
+                                // For ex: 0xa, convert into byte array
+                                byte objByte = (byte)(Utilities.HexToByte(
+                                    Utilities.RemoveHexstringPrefix(MultiFilters2.txtFilterData.Text).TrimEnd()) << 4);
+                                SearchSelectData2 = new byte[] { objByte };
+                            }
+                            else if (discard2 == 1)
+                            {
+                                // If filter length is in odd nibbles. For ex: 0xabc , 0xabcde, 0xabcdefg
+                                // after converting to byte array we get 0xab, 0xc0 if the specified filter is 0xabc
+                                //Adding omitted character to byte array
+                                Array.Resize(ref SearchSelectData2, SearchSelectData2.Length + 1);
+                                byte objByte = (byte)(((Utilities.HexToByte(
+                                    Utilities.RemoveHexstringPrefix(MultiFilters2.txtFilterData.Text).Substring(
+                                    Utilities.RemoveHexstringPrefix(
+                                    MultiFilters2.txtFilterData.Text).Length - 1).TrimEnd())) << 4));
+                                Array.Copy(new object[] { objByte }, 0, SearchSelectData2, SearchSelectData2.Length - 1, 1);
+                            }
+
+                            UInt16 dataLength2;
+                            if (MultiFilters2.txtFilterData.Text != "")
+                                dataLength2 = Convert.ToUInt16(Utilities.RemoveHexstringPrefix(MultiFilters2.txtFilterData.Text).Length * 4);//calculate the length in the form of nibbles
+                            else
+                                dataLength2 = 0;
+
+                            if (MultiFilters2.cbxFilterMemBank.Text == "EPC Length")
+                            {
+                                dataLength2 = Convert.ToUInt16(Utilities.CheckHexOrDecimal(MultiFilters2.txtFilterEPCLength.Text));
+                                searchSelect2 = new Gen2.Select(false, Gen2.Bank.GEN2EPCLENGTHFILTER, 16, dataLength2, new byte[] { 0x30, 0x00 });
+                            }
+                            else
+                            {
+                                searchSelect2 = new Gen2.Select((bool)MultiFilters2.chkFilterInvert.IsChecked, selectMemBank2, Convert.ToUInt32(Utilities.CheckHexOrDecimal(MultiFilters2.txtFilterStartAddr.Text)), dataLength, SearchSelectData2);
+                            }
+                            switch (MultiFilters2.cbxFilterTarget.Text)
+                            {
+                                case "INV S0":
+                                    searchSelect2.target = Gen2.Select.Target.Inventoried_S0;
+                                    break;
+                                case "INV S1":
+                                    searchSelect2.target = Gen2.Select.Target.Inventoried_S1;
+                                    break;
+                                case "INV S2":
+                                    searchSelect2.target = Gen2.Select.Target.Inventoried_S2;
+                                    break;
+                                case "INV S3":
+                                    searchSelect2.target = Gen2.Select.Target.Inventoried_S3;
+                                    break;
+                                case "SELECT":
+                                    searchSelect2.target = Gen2.Select.Target.Select;
+                                    break;
+                            };
+
+                            switch (MultiFilters2.cbxFilterAction.Text)
+                            {
+                                case "0":
+                                    searchSelect2.action = Gen2.Select.Action.ON_N_OFF;
+                                    break;
+                                case "1":
+                                    searchSelect2.action = Gen2.Select.Action.ON_N_NOP;
+                                    break;
+                                case "2":
+                                    searchSelect2.action = Gen2.Select.Action.NOP_N_OFF;
+                                    break;
+                                case "3":
+                                    searchSelect2.action = Gen2.Select.Action.NEG_N_NOP;
+                                    break;
+                                case "4":
+                                    searchSelect2.action = Gen2.Select.Action.OFF_N_ON;
+                                    break;
+                                case "5":
+                                    searchSelect2.action = Gen2.Select.Action.OFF_N_NOP;
+                                    break;
+                                case "6":
+                                    searchSelect2.action = Gen2.Select.Action.NOP_N_ON;
+                                    break;
+                                case "7":
+                                    searchSelect2.action = Gen2.Select.Action.NOP_N_NEG;
+                                    break;
+                            };
+                            if ((bool)chkApplyFilter3.IsChecked)
+                            {
+                                //Gen2.Select searchSelect3 = null;
+                                //Gen2.Bank selectMemBank = Gen2.Bank.EPC;
+                                switch (MultiFilters3.cbxFilterMemBank.Text)
+                                {
+                                    case "EPC":
+                                        selectMemBank3 = Gen2.Bank.EPC;
+                                        break;
+                                    case "TID":
+                                        selectMemBank3 = Gen2.Bank.TID;
+                                        break;
+                                    case "User":
+                                        selectMemBank3 = Gen2.Bank.USER;
+                                        break;
+                                    case "EPC Truncate":
+                                        selectMemBank3 = Gen2.Bank.GEN2EPCTRUNCATE;
+                                        break;
+                                    case "EPC Length":
+                                        selectMemBank3 = Gen2.Bank.GEN2EPCLENGTHFILTER;
+                                        break;
+                                };
+
+                                int discard3 = 0;
+                                byte[] SearchSelectData3 = Utilities.GetBytes(
+                                    Utilities.RemoveHexstringPrefix(MultiFilters3.txtFilterData.Text), out discard3);
+                                // Enter inside if condition, only if filter length is in odd nibbles(hex characters)
+                                if (discard3 == 1 && SearchSelectData3.Length == 0)
+                                {
+                                    // If only one hex character(one nibble) is specified as a filter.
+                                    // For ex: 0xa, convert into byte array
+                                    byte objByte = (byte)(Utilities.HexToByte(
+                                        Utilities.RemoveHexstringPrefix(MultiFilters3.txtFilterData.Text).TrimEnd()) << 4);
+                                    SearchSelectData3 = new byte[] { objByte };
+                                }
+                                else if (discard3 == 1)
+                                {
+                                    // If filter length is in odd nibbles. For ex: 0xabc , 0xabcde, 0xabcdefg
+                                    // after converting to byte array we get 0xab, 0xc0 if the specified filter is 0xabc
+                                    //Adding omitted character to byte array
+                                    Array.Resize(ref SearchSelectData3, SearchSelectData3.Length + 1);
+                                    byte objByte = (byte)(((Utilities.HexToByte(
+                                        Utilities.RemoveHexstringPrefix(MultiFilters3.txtFilterData.Text).Substring(
+                                        Utilities.RemoveHexstringPrefix(
+                                        MultiFilters3.txtFilterData.Text).Length - 1).TrimEnd())) << 4));
+                                    Array.Copy(new object[] { objByte }, 0, SearchSelectData3, SearchSelectData3.Length - 1, 1);
+                                }
+
+                                UInt16 dataLength3;
+                                if (MultiFilters3.txtFilterData.Text != "")
+                                    dataLength3 = Convert.ToUInt16(Utilities.RemoveHexstringPrefix(MultiFilters3.txtFilterData.Text).Length * 4);//calculate the length in the form of nibbles
+                                else
+                                    dataLength3 = 0;
+
+                                if (MultiFilters3.cbxFilterMemBank.Text == "EPC Length")
+                                {
+                                    dataLength3 = Convert.ToUInt16(Utilities.CheckHexOrDecimal(MultiFilters3.txtFilterEPCLength.Text));
+                                    searchSelect3 = new Gen2.Select(false, Gen2.Bank.GEN2EPCLENGTHFILTER, 16, dataLength3, new byte[] { 0x30, 0x00 });
+                                }
+                                else
+                                {
+                                    searchSelect3 = new Gen2.Select((bool)MultiFilters3.chkFilterInvert.IsChecked, selectMemBank3, Convert.ToUInt32(Utilities.CheckHexOrDecimal(MultiFilters3.txtFilterStartAddr.Text)), dataLength, SearchSelectData3);
+                                }
+                                switch (MultiFilters3.cbxFilterTarget.Text)
+                                {
+                                    case "INV S0":
+                                        searchSelect3.target = Gen2.Select.Target.Inventoried_S0;
+                                        break;
+                                    case "INV S1":
+                                        searchSelect3.target = Gen2.Select.Target.Inventoried_S1;
+                                        break;
+                                    case "INV S2":
+                                        searchSelect3.target = Gen2.Select.Target.Inventoried_S2;
+                                        break;
+                                    case "INV S3":
+                                        searchSelect3.target = Gen2.Select.Target.Inventoried_S3;
+                                        break;
+                                    case "SELECT":
+                                        searchSelect3.target = Gen2.Select.Target.Select;
+                                        break;
+                                };
+
+                                switch (MultiFilters3.cbxFilterAction.Text)
+                                {
+                                    case "0":
+                                        searchSelect3.action = Gen2.Select.Action.ON_N_OFF;
+                                        break;
+                                    case "1":
+                                        searchSelect3.action = Gen2.Select.Action.ON_N_NOP;
+                                        break;
+                                    case "2":
+                                        searchSelect3.action = Gen2.Select.Action.NOP_N_OFF;
+                                        break;
+                                    case "3":
+                                        searchSelect3.action = Gen2.Select.Action.NEG_N_NOP;
+                                        break;
+                                    case "4":
+                                        searchSelect3.action = Gen2.Select.Action.OFF_N_ON;
+                                        break;
+                                    case "5":
+                                        searchSelect3.action = Gen2.Select.Action.OFF_N_NOP;
+                                        break;
+                                    case "6":
+                                        searchSelect3.action = Gen2.Select.Action.NOP_N_ON;
+                                        break;
+                                    case "7":
+                                        searchSelect3.action = Gen2.Select.Action.NOP_N_NEG;
+                                        break;
+                                };
+                                //three filters applied
+                                multifilter = new MultiFilter(new TagFilter[] { searchSelect, searchSelect2, searchSelect3 });
+                            }
+                            else
+                            {//Two filters applied
+                                multifilter = new MultiFilter(new TagFilter[] { searchSelect, searchSelect2 });
+                            }
+                        }
+                        else
+                        {//only one filter
+                         //searchSelect = new Gen2.Select((bool)MultiFilters1.chkFilterInvert.IsChecked, selectMemBank, Convert.ToUInt32(Utilities.CheckHexOrDecimal(MultiFilters1.txtFilterStartAddr.Text)), dataLength, SearchSelectData);
+                        }
+                    }
+                    else
+                    {
+                        searchSelect = null;
+                    }
+                    //END Setup Select Filter settings if option checked
+
+                    if (0 == ant.Count)
+                    {
+                        throw new Exception("Please select at least one antenna");
+                    }
+
+                    simpleReadPlans.Clear();
+
+                    bool curChkEnableReadStopTrigger = (bool)chkEnableReadStopTrigger.IsChecked;
+                    if ((bool)is_trigger_checkbox.IsChecked)
+                    {
+                        chkEnableReadStopTrigger.IsChecked = false;
+                    }
+
+                    if (!(bool)chkApplyFilter1.IsChecked)
+                    {//no filter selected
+                        CreateReadPlan(TagProtocol.GEN2, searchSelect, embTagOp, isFastSearchEnabled);
+                    }
+                    else if ((bool)chkApplyFilter1.IsChecked && !(bool)chkApplyFilter2.IsChecked)
+                    {//Single filter selected
+                        CreateReadPlan(TagProtocol.GEN2, searchSelect, embTagOp, isFastSearchEnabled);
+                    }
+                    else if ((bool)chkApplyFilter1.IsChecked && (bool)chkApplyFilter2.IsChecked)
+                    {//multi select plan has to be set
+                        CreateReadPlan(TagProtocol.GEN2, multifilter, embTagOp, isFastSearchEnabled);
+                    }
+
+                    chkEnableReadStopTrigger.IsChecked = curChkEnableReadStopTrigger;
+
+                    if (simpleReadPlans.ToArray().Length == 0)
+                    {
+                        throw new Exception("Please select at least one Read Protocol");
+                        //objReader.ParamSet("/reader/read/plan", new SimpleReadPlan(ant.ToArray(), TagProtocol.GEN2, searchSelect, embTagOp, isFastSearchEnabled));
+                    }
+                    else
+                    {
+                        ReadPlan plan;
+                        if (simpleReadPlans.Count == 1)
+                        {
+                            plan = (SimpleReadPlan)simpleReadPlans[0];
+                        }
+                        else
+                        {
+                            plan = new MultiReadPlan(simpleReadPlans);
+                        }
+                        objReader.ParamSet("/reader/read/plan", plan);
+
+                        objReader.ParamSet("/reader/userConfig", new SerialReader.UserConfigOp(SerialReader.UserConfigOperation.SAVEWITHREADPLAN));
+                        Console.WriteLine("StartAutoRead: User profile set option:save all configuration with read plan");
+
+                        objReader.ParamSet("/reader/userConfig", new SerialReader.UserConfigOp(SerialReader.UserConfigOperation.RESTORE));
+                        Console.WriteLine("StartAutoRead: User profile set option:restore all configuration");
+                    }
+                    simpleReadPlans.Clear();
+                }
+                catch (Exception ex)
+                {
+                    throw ex;
+                }
+
+                TagResults.enableTagAgingOnRead = true;
+                TagResults.tagagingColourCache.Clear();
+
+                btnAutonomous.ToolTip = "Stop Autonomous Read";
+
+                // To read maximum tags by default
+                LoadGen2Settings();
+                Console.WriteLine("LoadGen2Settings");
+
+                // Register read exception and tag read listeners
+                objReader.ReadException += ReadException;
+                objReader.TagRead += PrintTagRead;
+                Console.WriteLine("Add TagRead");
+
+                // Clear tag results
+                if (selectionOnEPC != null)
+                {
+                    ClearReads();
+                }
+
+                // Cache current time
+                startAsyncReadTime = DateTime.Now;
+
+                // Display reading status
+                lblshowStatus.Content = "Autonomous Reading";
+                imgReaderStatus.Source = new BitmapImage(new Uri(@"..\Icons\LedGreen.png",
+                    UriKind.RelativeOrAbsolute));
+
+                // Start timer to render data on the grid and calculate read rate
+                dispatchtimer.Start();
+                readRatePerSec.Start();
+
+                objReader.ReceiveAutonomousReading();
+            }
+            catch (Exception exp)
+            {
+                if (exp.Message.Contains("Please select at least one antenna") || exp.Message.Contains("Antenna is not connected to reader") || exp.Message.Contains("Please select at least one Read Protocol"))
+                {
+                    MessageBox.Show(exp.Message, "Universal Reader Assistant Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    
+                    lblWarning.Dispatcher.BeginInvoke(new ThreadStart(delegate ()
+                    {
+                        GUIturnoffWarning();
+                        expdrReadOptions.IsExpanded = true;
+                        expdrReadOptions.Focus();
+                        //Dock the settings/status panel if not docked, to display Firmware update options
+                        if (pane1Button.Visibility == System.Windows.Visibility.Visible)
+                        {
+                            pane1Button_MouseEnter(null, null);
+                            pane1Pin_Click(null, null);
+                        }
+                        if (expdrConnect.IsExpanded)
+                        {
+                            expdrConnect.IsExpanded = true;
+                        }
+                    }));
+                    return;
+                }
+                if (exp is ReaderCodeException)
+                {
+
+                }
+                if (exp is ReaderCommException)
+                {
+                    handleReaderCommException((ReaderCommException)exp, new RoutedEventArgs());
+                }
+            }
         }
     }
 }

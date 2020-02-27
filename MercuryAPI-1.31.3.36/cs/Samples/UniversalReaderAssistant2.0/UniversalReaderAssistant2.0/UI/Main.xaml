@@ -90,6 +90,20 @@
                         Perform read based on the read behavior defined by the settings in the "Read/Write Options" sidebar.
                     </Button.ToolTip>
                 </Button>
+                <Button Margin="3" ToolTipService.ShowOnDisabled="True" Visibility="Hidden"  Content="Autonomous" Name="btnAutonomous" Width="120" Height="30" HorizontalContentAlignment="Center" Click="btnAutonomous_Click">
+                    <Button.ToolTip>
+                        Autonomous Mode Trigger Read
+                    </Button.ToolTip>
+                </Button>
+                <StackPanel Name="trigger_stackpanel" Orientation="Horizontal" Margin="3" VerticalAlignment="Center" Height="30" Visibility="Visible">
+                    <CheckBox Name="is_trigger_checkbox" Content="Trigger" Margin="3" Checked="is_trigger_checkbox_Checked" Unchecked="is_trigger_checkbox_Unchecked"/>
+                    <ComboBox Name="trigger_gpi_combobox" SelectedIndex="0" Margin="3" Visibility="Hidden">
+                        <ComboBoxItem Content="1"/>
+                        <ComboBoxItem Content="2"/>
+                        <ComboBoxItem Content="3"/>
+                        <ComboBoxItem Content="4"/>
+                    </ComboBox>
+                </StackPanel>
                 <Button Margin="3" ToolTipService.ShowOnDisabled="True" Foreground="Black"  Content="Toggle Side Panel" Width="120" Height="30" ToolTip="Toggle Side Panel" Name="btnConnectExpander1" Click="btnConnectExpander_Click" Visibility="Collapsed"/>
                 <Button Margin="3" ToolTipService.ShowOnDisabled="True" Foreground="Black"  Content="Connect" Width="120" Height="30" ToolTip="Connect To Reader" Name="btnConnectExpander" Click="btnConnectExpander_Click"/>
             </StackPanel>
