@@ -280,6 +280,8 @@ namespace ThingMagic.URA2
 
         public StopOnTagCount sotc = new StopOnTagCount();
 
+        public bool IsAutoReadStarted = false;
+
         #endregion
 
         static Main()
@@ -2497,6 +2499,7 @@ namespace ThingMagic.URA2
             {
                 if (btnConnect.Content.ToString() == "Connect")
                 {
+                    is_trigger_checkbox.Visibility = Visibility.Visible;
                     if ((bool)rdbtnNetworkConnection.IsChecked)
                     {
                         if ("" == cmbFixedReaderAddr.Text)
@@ -2604,6 +2607,7 @@ namespace ThingMagic.URA2
                 }
                 else
                 {
+                    is_trigger_checkbox.Visibility = Visibility.Hidden;
                     try
                     {
                         tbCustRegConfig.Visibility = Visibility.Hidden;
@@ -4432,22 +4436,28 @@ namespace ThingMagic.URA2
                     foreach (int a in ant)
                     {
                         srp = new SimpleReadPlan(new int[] { a }, protocol, searchSelect, embTagOp, isFastSearchEnabled, 100);
-                        GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
-                        gpiPinTrigger.enable = true;
-                        //To disable autonomous read make enableAutonomousRead flag to false and do SAVEWITHRREADPLAN
-                        srp.enableAutonomousRead = true;
-                        srp.ReadTrigger = gpiPinTrigger;
+                        if((bool)is_trigger_checkbox.IsChecked == true)
+                        {
+                            GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+                            gpiPinTrigger.enable = true;
+                            //To disable autonomous read make enableAutonomousRead flag to false and do SAVEWITHRREADPLAN
+                            srp.enableAutonomousRead = true;
+                            srp.ReadTrigger = gpiPinTrigger;
+                        }
                         simpleReadPlans.Add(srp);
                     }
                 }
                 else
                 {
                     SimpleReadPlan srp = new SimpleReadPlan(ant.ToArray(), protocol, searchSelect, embTagOp, isFastSearchEnabled);
-                    GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
-                    gpiPinTrigger.enable = true;
-                    //To disable autonomous read make enableAutonomousRead flag to false and do SAVEWITHRREADPLAN
-                    srp.enableAutonomousRead = true;
-                    srp.ReadTrigger = gpiPinTrigger;
+                    if ((bool)is_trigger_checkbox.IsChecked == true)
+                    {
+                        GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
+                        gpiPinTrigger.enable = true;
+                        //To disable autonomous read make enableAutonomousRead flag to false and do SAVEWITHRREADPLAN
+                        srp.enableAutonomousRead = true;
+                        srp.ReadTrigger = gpiPinTrigger;
+                    }
                     simpleReadPlans.Add(srp);
                 }
             }
@@ -5906,6 +5916,17 @@ namespace ThingMagic.URA2
         /// <param name="e"></param>
         private void btnRead_Click(object sender, RoutedEventArgs e)
         {
+            if((bool)is_trigger_checkbox.IsChecked == true)
+            {
+                is_trigger_checkbox.IsChecked = false;
+            }
+            if(IsAutoReadStarted == true)
+            {
+                MessageBox.Show("Autonomous is in use, It will reset the reader.","Reset Reader", MessageBoxButton.OK);
+                btnConnect_Click(sender, e);
+                ClearReads();
+                return;
+            }
             if (btnRead.Content.ToString() == "Read")
             {
                 try
@@ -6584,8 +6605,6 @@ namespace ThingMagic.URA2
                 txtTagsNum.Text = value.ToString();
             }
         }
-
-        public bool IsAutoReadStarted = false;
 
         private void cmdUp_Click(object sender, RoutedEventArgs e)
         {
@@ -15738,12 +15757,14 @@ namespace ThingMagic.URA2
         {
             trigger_gpi_combobox.Visibility = Visibility.Visible;
             btnAutonomous.Visibility = Visibility.Visible;
+            btnRead.Visibility = Visibility.Hidden;
         }
 
         private void is_trigger_checkbox_Unchecked(object sender, RoutedEventArgs e)
         {
-            trigger_gpi_combobox.Visibility = Visibility.Collapsed;
-            btnAutonomous.Visibility = Visibility.Collapsed;
+            trigger_gpi_combobox.Visibility = Visibility.Hidden;
+            btnAutonomous.Visibility = Visibility.Hidden;
+            btnRead.Visibility = Visibility.Visible;
         }
 
         private void btnAutonomous_Click(object sender, RoutedEventArgs e)
@@ -15777,6 +15798,7 @@ namespace ThingMagic.URA2
 
         private void ResetReadPlan()
         {
+            Console.WriteLine("Reset Read Plan...");
             List<int> ant = GetSelectedAntennaList();
 
             //GpiPinTrigger gpiPinTrigger = new GpiPinTrigger();
@@ -16210,12 +16232,6 @@ namespace ThingMagic.URA2
 
                     simpleReadPlans.Clear();
 
-                    bool curChkEnableReadStopTrigger = (bool)chkEnableReadStopTrigger.IsChecked;
-                    if ((bool)is_trigger_checkbox.IsChecked)
-                    {
-                        chkEnableReadStopTrigger.IsChecked = false;
-                    }
-
                     if (!(bool)chkApplyFilter1.IsChecked)
                     {//no filter selected
                         CreateReadPlan(TagProtocol.GEN2, searchSelect, embTagOp, isFastSearchEnabled);
@@ -16228,8 +16244,6 @@ namespace ThingMagic.URA2
                     {//multi select plan has to be set
                         CreateReadPlan(TagProtocol.GEN2, multifilter, embTagOp, isFastSearchEnabled);
                     }
-
-                    chkEnableReadStopTrigger.IsChecked = curChkEnableReadStopTrigger;
 
                     if (simpleReadPlans.ToArray().Length == 0)
                     {

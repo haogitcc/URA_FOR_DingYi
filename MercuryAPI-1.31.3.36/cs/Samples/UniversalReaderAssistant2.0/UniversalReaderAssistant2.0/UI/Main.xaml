@@ -96,7 +96,7 @@
                     </Button.ToolTip>
                 </Button>
                 <StackPanel Name="trigger_stackpanel" Orientation="Horizontal" Margin="3" VerticalAlignment="Center" Height="30" Visibility="Visible">
-                    <CheckBox Name="is_trigger_checkbox" Content="Trigger" Margin="3" Checked="is_trigger_checkbox_Checked" Unchecked="is_trigger_checkbox_Unchecked"/>
+                    <CheckBox Name="is_trigger_checkbox" Content="Trigger" Margin="3" Checked="is_trigger_checkbox_Checked" Unchecked="is_trigger_checkbox_Unchecked" Visibility="Hidden"/>
                     <ComboBox Name="trigger_gpi_combobox" SelectedIndex="0" Margin="3" Visibility="Hidden">
                         <ComboBoxItem Content="1"/>
                         <ComboBoxItem Content="2"/>
